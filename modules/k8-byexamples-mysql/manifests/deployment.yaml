@@ -1,0 +1,92 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: mysql
+  labels:
+    app: mysql
+spec:
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+        tier: mysql
+    spec:
+      containers:
+      - image: mysql:5.6
+        name: mysql
+        env:
+        - name: MYSQL_DATABASE
+          value: $MYSQL_DATABASE
+        - name: MYSQL_USER
+          value: $MYSQL_USER
+        - name: MYSQL_PASSWORD
+          value: $MYSQL_PASSWORD
+        - name: MYSQL_ROOT_PASSWORD
+          value: $MYSQL_ROOT_PASSWORD
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql
+
+
+- name: test
+  tasks:
+    - block:
+        - name: Check server already schedule for patching
+          include: check_server_exist_in_db.yml server='{{ ci.hostname }}' 
+
+        - name: Create an change request
+          snow_record:
+            username: '{{snow_username}}'
+            password: '{{snow_password}}'
+            instance: '{{snow_instance}}'
+            state: present
+            table: change_request
+            data:
+              short_description: "Applying security patches for {{ ci.hostname }}"
+              type: 'Standard'
+              cmdb_ci: '{{ci.hostname}}'
+              company: 'Acxiom'
+              assignment_group: 'IT_Infra_Delivery_Nix'
+              description: 'IT_DPIE_NIX Security Patch Maintenance for {{ci.maintenance_window}} . Maintenance options for servers supported by the IT_DPIE_NIX team. These windows are pre-approved with all customers.  All the important and critical patches will be deployed followed by a server reboot if required.'
+              change_plan : 'All servers arranged under {{ci.maintenance_window}}  will be patched followed by a reboot. Current server is {{ci.hostname}}'
+              backout_plan: 'We can roll back to previous kernel and SEV 1 ticket will be opened if the server is not up or if application/database did not start'
+              test_plan: 'A scheduled Inspec profile will be run to check the installed kernel version and application or database is running after reboot. If it fails an SEV 1 ticket will be opened automatcially'
+              u_why_do_the_change: 'Update the server and fix vulnerbilities'
+              start_date: '{{ci.maintenance_window}}'
+              end_date: '{{ci.maintenance_window}}'
+              #approval: 'approved'
+          register: change_request
+
+        - debug:
+            msg: '{{ change_request }}'
+
+        - name: Approved change Request
+          uri:
+            url: 'https://{{snow_instance}}.service-now.com/api/now/table/change_request/{{change_request.record.sys_id}}'
+            method: PUT
+            user: '{{snow_username}}'
+            password: '{{snow_password}}'
+            force_basic_auth: yes
+            body_format: json
+            body: 
+              approval: 'approved'
+          register: uri_result
+
+        - debug:
+            msg: '{{uri_result}}'
+
+        - name: insert change_request in database
+          shell: sqlite3 {{auto_patch_db}} "insert into CHANGE_REQUEST (server_name, change_request, maintenance_window) values('{{ ci.hostname }}','{{ change_request.record.number }}',datetime('{{ ci.maintenance_window }}'))" 
+
+      rescue:
+        - debug: 
+            msg: 'Skipping {{ci.hostname}} as it is already aviable to Patching'

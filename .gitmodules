@@ -1,0 +1,9 @@
+[submodule "modules/k8-byexamples-ingress-controller"]
+	path = modules/k8-byexamples-ingress-controller
+	url = https://github.com/mateothegreat/k8-byexamples-ingress-controller
+[submodule "modules/k8-byexamples-cert-manager"]
+	path = modules/k8-byexamples-cert-manager
+	url = https://github.com/mateothegreat/k8-byexamples-cert-manager
+[submodule "modules/k8-byexamples-mysql"]
+	path = modules/k8-byexamples-mysql
+	url = https://github.com/mateothegreat/k8-byexamples-mysql
